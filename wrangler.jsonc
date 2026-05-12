@@ -1,0 +1,57 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "google-family-mcp",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-01-13",
+  "compatibility_flags": ["nodejs_compat"],
+
+  "kv_namespaces": [
+    {
+      "binding": "STATE_KV",
+      "id": "TODO_CREATE_NEW_KV_NAMESPACE"
+    },
+    {
+      "binding": "TOKENS_KV",
+      "id": "TODO_CREATE_NEW_KV_NAMESPACE"
+    }
+  ],
+
+  "vars": {
+    // Comma-separated list of allowed family member email addresses.
+    // These are the only accounts that can log in and operate tools.
+    "ALLOWED_EMAILS": "you@gmail.com,spouse@gmail.com",
+
+    // Comma-separated allowed external recipients for email send/forward
+    // and calendar invites. Supports exact emails (name@example.com) or
+    // domains (example.com or @example.com). Family members from
+    // ALLOWED_EMAILS are always implicitly allowed.
+    "ALLOWED_EXTERNAL_RECIPIENTS": ""
+  },
+
+  "ratelimits": [
+    {
+      "name": "MCP_RATE_LIMITER",
+      "namespace_id": "1001",
+      "simple": { "limit": 60, "period": 10 }
+    }
+  ],
+
+  "observability": {
+    "enabled": true
+  },
+
+  "dev": {
+    "port": 8788
+  }
+
+  // Secrets — set via: wrangler secret put <NAME>
+  // Required:
+  //   GOOGLE_CLIENT_ID
+  //   GOOGLE_CLIENT_SECRET
+  //   JWT_SECRET              (generate: openssl rand -hex 32)
+  //
+  // KV namespaces — create via:
+  //   wrangler kv namespace create STATE_KV
+  //   wrangler kv namespace create TOKENS_KV
+  // Then replace the TODO IDs above with the returned namespace IDs.
+}
