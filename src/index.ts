@@ -21,7 +21,7 @@ function page(title: string, body: string): string {
   return `<!DOCTYPE html>
 <html><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${title} — google-family-mcp</title>
+<title>${title} — family-mcp</title>
 <style>
   *{box-sizing:border-box}
   body{font-family:system-ui,sans-serif;max-width:520px;margin:60px auto;padding:0 24px;color:#1a1a1a;line-height:1.5}
@@ -65,7 +65,7 @@ app.get("/auth/status", async (c) => {
   if (!auth) {
     if (wantsJson) return c.json({ authenticated: false }, 200);
     return c.html(page("Not Signed In", `
-      <h1>google-family-mcp</h1>
+      <h1>family-mcp</h1>
       <p>You are not signed in.</p>
       <div class="actions">
         <a class="btn btn-primary" href="/oauth/authorize">Sign in with Google</a>
@@ -91,7 +91,7 @@ app.get("/auth/status", async (c) => {
     : "";
 
   return c.html(page("Status", `
-    <h1>google-family-mcp</h1>
+    <h1>family-mcp</h1>
 
     <div class="card">
       <p>
@@ -190,9 +190,9 @@ app.all("/mcp", async (c) => {
 
 app.get("/", (c) => {
   return c.json({
-    name: "google-family-mcp",
+    name: "family-mcp",
     version: "1.0.0",
-    description: "MCP server for family Google accounts (Gmail, Calendar, Drive)",
+    description: "MCP server for shared family Gmail, Calendar, and Drive workflows",
     endpoints: {
       oauth: {
         authorize: "GET /oauth/authorize",

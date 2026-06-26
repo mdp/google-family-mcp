@@ -1,24 +1,28 @@
 {
-  "name": "google-family-mcp",
+  "name": "family-mcp",
   "version": "1.0.0",
-  "private": true,
+  "license": "MIT",
+  "packageManager": "pnpm@11.1.2",
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "typecheck": "tsc --noEmit"
+    "deploy:ci": "wrangler deploy --config wrangler.ci.jsonc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.25.2",
-    "hono": "^4.7.10",
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "hono": "^4.12.27",
     "jose": "^5.9.6",
     "marked": "^17.0.5",
     "zod": "^3.24.4"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250521.0",
-    "@types/node": "^25.5.0",
+    "@cloudflare/workers-types": "^4.20260625.1",
+    "@types/node": "^26.0.1",
     "typescript": "^5.8.3",
-    "wrangler": "^4.16.0"
+    "vitest": "^4.1.9",
+    "wrangler": "^4.105.0"
   }
 }

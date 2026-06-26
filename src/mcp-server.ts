@@ -19,6 +19,7 @@ import {
   gmailForward,
   gmailListLabels,
   gmailMarkRead,
+  type GmailThreadSummary,
 } from "./gmail-service.js";
 import {
   calendarList,
@@ -36,6 +37,9 @@ import {
   driveUploadFile,
   driveCreateFolder,
 } from "./drive-service.js";
+import { listFamilyMembers, parseFamilyProfiles, type FamilyProfile } from "./family-profiles.js";
+import { registerSkillTools } from "./skills/tools.js";
+import { SKILL_NAMES, renderSkillMarkdown, skillCatalogSummary, skillIndex, type SkillName } from "./skills/registry.js";
 
 function errorResult(message: string) {
   return {
@@ -59,11 +63,141 @@ function authEmail(extra: { authInfo?: { extra?: unknown } }): string | undefine
   return (extra.authInfo?.extra as AuthExtra | undefined)?.email;
 }
 
+export interface GmailSearchAllAccountResult {
+  account: string;
+  name: string | null;
+  relationship: string | null;
+  timezone: string | null;
+  authorized: boolean;
+  results: GmailThreadSummary[];
+  error?: string;
+}
+
+export async function searchAllFamilyGmail(opts: {
+  allowedEmails: string[];
+  profiles: FamilyProfile[];
+  query: string;
+  maxResults: number;
+  clientFor: (email: string) => Promise<GoogleClient | null>;
+}): Promise<GmailSearchAllAccountResult[]> {
+  return Promise.all(
+    opts.allowedEmails.map(async (account) => {
+      const profile = opts.profiles.find((member) => member.email.toLowerCase() === account);
+      const base = {
+        account,
+        name: profile?.name ?? null,
+        relationship: profile?.relationship ?? null,
+        timezone: profile?.timezone ?? null,
+      };
+      const client = await opts.clientFor(account);
+      if (!client) {
+        return {
+          ...base,
+          authorized: false,
+          results: [],
+        };
+      }
+      try {
+        return {
+          ...base,
+          authorized: true,
+          results: await gmailSearch(client, opts.query, opts.maxResults),
+        };
+      } catch (error) {
+        return {
+          ...base,
+          authorized: true,
+          error: `Error searching Gmail: ${error}`,
+          results: [],
+        };
+      }
+    }),
+  );
+}
+
+function familyInstructions(): string {
+  return [
+    "Family MCP. Use this server for shared family Gmail, Calendar, and Drive workflows.",
+    "Every authenticated family member can operate on every authorized family account. Pass account when targeting a specific family member.",
+    `Static skills are available through skills_get. Available skills: ${skillCatalogSummary()}`,
+    "Load the relevant skill before specialized work: about for caller context, family-google for cross-account Google work, email-search before shared Gmail search, and calendar before scheduling or invites.",
+  ].join("\n");
+}
+
+function registerSkillResources(server: McpServer, callerEmail: string, profiles: FamilyProfile[]): void {
+  server.registerResource(
+    "Family skill index",
+    "skill://family/index.json",
+    {
+      title: "Family MCP skill index",
+      description: "Static skills available through the Family MCP server.",
+      mimeType: "application/json",
+    },
+    (_uri, extra) => {
+      const email = authEmail(extra) ?? callerEmail;
+      return {
+        contents: [
+          {
+            uri: "skill://family/index.json",
+            mimeType: "application/json",
+            text: JSON.stringify(skillIndex(email, profiles), null, 2),
+          },
+        ],
+      };
+    },
+  );
+
+  for (const name of SKILL_NAMES) {
+    server.registerResource(
+      `Family skill: ${name}`,
+      `skill://family/${name}/SKILL.md`,
+      {
+        title: `Family skill: ${name}`,
+        description: `Static Family MCP skill markdown for ${name}.`,
+        mimeType: "text/markdown",
+      },
+      (_uri, extra) => {
+        const email = authEmail(extra) ?? callerEmail;
+        const rendered = renderSkillMarkdown(name as SkillName, email, profiles);
+        if ("error" in rendered) {
+          return {
+            contents: [
+              {
+                uri: `skill://family/${name}/SKILL.md`,
+                mimeType: "text/plain",
+                text: rendered.error,
+              },
+            ],
+          };
+        }
+        return {
+          contents: [
+            {
+              uri: `skill://family/${name}/SKILL.md`,
+              mimeType: "text/markdown",
+              text: rendered.markdown,
+            },
+          ],
+        };
+      },
+    );
+  }
+}
+
 export function createMcpServer(storage: Storage, env: Env, callerEmail: string): McpServer {
-  const server = new McpServer({
-    name: "google-family-mcp",
-    version: "1.0.0",
-  });
+  const familyProfiles = parseFamilyProfiles(env.FAMILY_MEMBERS, env.ALLOWED_EMAILS);
+  const server = new McpServer(
+    {
+      name: "family-mcp",
+      version: "1.0.0",
+    },
+    {
+      instructions: familyInstructions(),
+    },
+  );
+
+  registerSkillResources(server, callerEmail, familyProfiles);
+  registerSkillTools(server, callerEmail, familyProfiles);
 
   // All family members may pass `account` to operate on another member's data.
   const accountField = (description: string) => ({
@@ -92,7 +226,14 @@ export function createMcpServer(storage: Storage, env: Env, callerEmail: string)
       const results = await Promise.all(
         emails.map(async (e) => {
           const client = await clientFor(e);
-          return { email: e, authorized: client !== null };
+          const profile = listFamilyMembers(familyProfiles).find((member) => member.email.toLowerCase() === e);
+          return {
+            email: e,
+            name: profile?.name ?? null,
+            relationship: profile?.relationship ?? null,
+            timezone: profile?.timezone ?? null,
+            authorized: client !== null,
+          };
         }),
       );
       return successResult(results);
@@ -122,6 +263,30 @@ export function createMcpServer(storage: Storage, env: Env, callerEmail: string)
       } catch (error) {
         return errorResult(`Error searching Gmail: ${error}`);
       }
+    },
+  );
+
+  // ── Gmail: gmail_search_all ────────────────────────────────────────────────
+  server.tool(
+    "gmail_search_all",
+    "Search Gmail threads across all family accounts. Returns per-account result groups; unauthorized accounts are reported without failing the whole search.",
+    {
+      query: z.string().describe("Gmail search query (same syntax as Gmail search box)"),
+      max_results: z.number().optional().default(10).describe("Maximum threads to return per account (default 10)"),
+    },
+    async ({ query, max_results }, extra) => {
+      const email = authEmail(extra);
+      if (!email) return errorResult("Not authenticated.");
+
+      const results = await searchAllFamilyGmail({
+        allowedEmails: parseAllowedList(env.ALLOWED_EMAILS),
+        profiles: familyProfiles,
+        query,
+        maxResults: max_results,
+        clientFor,
+      });
+
+      return successResult({ query, accounts: results });
     },
   );
 
@@ -283,7 +448,7 @@ export function createMcpServer(storage: Storage, env: Env, callerEmail: string)
       if (!resolved.ok) return errorResult(resolved.error);
 
       try {
-        assertRecipientsAllowed({ to, cc, bcc }, env.ALLOWED_EMAILS, env.ALLOWED_EXTERNAL_RECIPIENTS);
+        assertRecipientsAllowed({ to, cc, bcc }, env.ALLOWED_EMAILS, env.ALLOWED_EXTERNAL_RECIPIENTS ?? "");
       } catch (error) {
         return errorResult(`${error instanceof Error ? error.message : String(error)}`);
       }
@@ -321,7 +486,7 @@ export function createMcpServer(storage: Storage, env: Env, callerEmail: string)
       if (!resolved.ok) return errorResult(resolved.error);
 
       try {
-        assertRecipientsAllowed({ to }, env.ALLOWED_EMAILS, env.ALLOWED_EXTERNAL_RECIPIENTS);
+        assertRecipientsAllowed({ to }, env.ALLOWED_EMAILS, env.ALLOWED_EXTERNAL_RECIPIENTS ?? "");
       } catch (error) {
         return errorResult(`${error instanceof Error ? error.message : String(error)}`);
       }
@@ -458,7 +623,7 @@ export function createMcpServer(storage: Storage, env: Env, callerEmail: string)
       summary: z.string().describe("Event title"),
       start_date_time: z.string().describe("Start time — ISO 8601 datetime or date for all-day events"),
       end_date_time: z.string().describe("End time — ISO 8601 datetime or date"),
-      time_zone: z.string().optional().default("America/New_York"),
+      time_zone: z.string().optional().default("UTC"),
       description: z.string().optional(),
       location: z.string().optional(),
       attendees: z.array(attendeeSchema).optional(),
@@ -490,7 +655,7 @@ export function createMcpServer(storage: Storage, env: Env, callerEmail: string)
       if (!resolved.ok) return errorResult(resolved.error);
 
       try {
-        assertAttendeesAllowed(args.attendees, env.ALLOWED_EMAILS, env.ALLOWED_EXTERNAL_RECIPIENTS);
+        assertAttendeesAllowed(args.attendees, env.ALLOWED_EMAILS, env.ALLOWED_EXTERNAL_RECIPIENTS ?? "");
       } catch (error) {
         return errorResult(`${error instanceof Error ? error.message : String(error)}`);
       }
@@ -540,7 +705,7 @@ export function createMcpServer(storage: Storage, env: Env, callerEmail: string)
       description: z.string().optional(),
       start_date_time: z.string().optional(),
       end_date_time: z.string().optional(),
-      time_zone: z.string().optional().default("America/New_York"),
+      time_zone: z.string().optional().default("UTC"),
       location: z.string().optional(),
       attendees: z.array(attendeeSchema).optional(),
       send_updates: z.enum(["all", "externalOnly", "none"]).optional(),
@@ -569,7 +734,7 @@ export function createMcpServer(storage: Storage, env: Env, callerEmail: string)
       if (!resolved.ok) return errorResult(resolved.error);
 
       try {
-        assertAttendeesAllowed(args.attendees, env.ALLOWED_EMAILS, env.ALLOWED_EXTERNAL_RECIPIENTS);
+        assertAttendeesAllowed(args.attendees, env.ALLOWED_EMAILS, env.ALLOWED_EXTERNAL_RECIPIENTS ?? "");
       } catch (error) {
         return errorResult(`${error instanceof Error ? error.message : String(error)}`);
       }

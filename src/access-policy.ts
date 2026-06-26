@@ -1,4 +1,4 @@
-// Identity-based access gates for google-family-mcp.
+// Identity-based access gates for family-mcp.
 //
 // All family members (ALLOWED_EMAILS) have symmetric access:
 //   - Any member can operate tools on any other member's account.

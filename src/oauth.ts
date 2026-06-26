@@ -68,7 +68,7 @@ function htmlPage(title: string, body: string): string {
   return `<!DOCTYPE html>
 <html><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${title} — google-family-mcp</title>
+<title>${title} — family-mcp</title>
 <style>
   body{font-family:system-ui,sans-serif;max-width:480px;margin:80px auto;padding:0 20px;color:#333}
   h1{font-size:1.4em}a{color:#2563eb}

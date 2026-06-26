@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "google-family-mcp",
+  "name": "family-mcp",
   "main": "src/index.ts",
   "compatibility_date": "2025-01-13",
   "compatibility_flags": ["nodejs_compat"],
@@ -19,7 +19,12 @@
   "vars": {
     // Comma-separated list of allowed family member email addresses.
     // These are the only accounts that can log in and operate tools.
-    "ALLOWED_EMAILS": "you@gmail.com,spouse@gmail.com",
+    "ALLOWED_EMAILS": "adult1@example.com,adult2@example.com",
+
+    // JSON array of family profile metadata used in skills, prompts, and
+    // account listings. Keep private values out of source control in forks by
+    // overriding this per environment or setting it as a secret.
+    "FAMILY_MEMBERS": "[{\"name\":\"Adult 1\",\"email\":\"adult1@example.com\",\"relationship\":\"adult\",\"timezone\":\"Etc/UTC\"},{\"name\":\"Adult 2\",\"email\":\"adult2@example.com\",\"relationship\":\"adult\",\"timezone\":\"Etc/UTC\"}]",
 
     // Comma-separated allowed external recipients for email send/forward
     // and calendar invites. Supports exact emails (name@example.com) or
