@@ -1,7 +1,4 @@
-import aboutSkill from "./library/about/SKILL.md?raw";
-import familyGoogleSkill from "./library/family-google/SKILL.md?raw";
-import emailSearchSkill from "./library/email-search/SKILL.md?raw";
-import calendarSkill from "./library/calendar/SKILL.md?raw";
+import { aboutSkill, calendarSkill, emailSearchSkill, familyGoogleSkill } from "./skill-content.js";
 import {
   familyProfileCandidates,
   findFamilyProfile,
