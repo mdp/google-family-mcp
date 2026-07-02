@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Env } from "./env.js";
 import type { Storage } from "./storage.js";
+import { getTokens } from "./storage.js";
 import type { AuthExtra } from "./types.js";
 import { GoogleClient } from "./google-client.js";
 import {
@@ -225,14 +226,39 @@ export function createMcpServer(storage: Storage, env: Env, callerEmail: string)
       const emails = parseAllowedList(env.ALLOWED_EMAILS);
       const results = await Promise.all(
         emails.map(async (e) => {
+          let tokens = await getTokens(storage, e);
           const client = await clientFor(e);
           const profile = listFamilyMembers(familyProfiles).find((member) => member.email.toLowerCase() === e);
+          let authorized = client !== null;
+          let auth_error: string | null = null;
+
+          if (client) {
+            try {
+              await client.ensureValidToken();
+              tokens = await getTokens(storage, e);
+            } catch (error) {
+              authorized = false;
+              auth_error = String(error);
+            }
+          }
+
+          const now = Date.now();
+
           return {
             email: e,
             name: profile?.name ?? null,
             relationship: profile?.relationship ?? null,
             timezone: profile?.timezone ?? null,
-            authorized: client !== null,
+            authorized,
+            auth_error,
+            google_token: tokens
+              ? {
+                  has_refresh_token: Boolean(tokens.refresh_token),
+                  obtained_at: tokens.obtained_at ? new Date(tokens.obtained_at).toISOString() : null,
+                  expires_at: new Date(tokens.expiry_date).toISOString(),
+                  seconds_until_expiry: Math.floor((tokens.expiry_date - now) / 1000),
+                }
+              : null,
           };
         }),
       );

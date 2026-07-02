@@ -7,6 +7,29 @@ const GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo";
 // Refresh access token 5 minutes before expiry
 const EXPIRY_BUFFER_MS = 5 * 60 * 1000;
 
+type GoogleTokenError = {
+  error?: string;
+  error_description?: string;
+};
+
+function googleTokenErrorMessage(status: number, body: string): string {
+  let googleError = "";
+  try {
+    const parsed = JSON.parse(body) as GoogleTokenError;
+    if (parsed.error) {
+      googleError = parsed.error;
+      if (parsed.error_description) {
+        googleError += `: ${parsed.error_description}`;
+      }
+    }
+  } catch {
+    googleError = body.trim().slice(0, 240);
+  }
+
+  const suffix = googleError ? ` (${googleError})` : "";
+  return `Google token refresh failed (${status})${suffix}. The user may need to re-authorize at /oauth/authorize.`;
+}
+
 export class GoogleClient {
   private tokens: GoogleTokens;
 
@@ -53,10 +76,10 @@ export class GoogleClient {
     });
 
     if (!response.ok) {
-      console.error(`Token refresh failed: ${response.status}`);
-      throw new Error(
-        `Google token refresh failed (${response.status}). The user may need to re-authorize at /oauth/authorize.`
-      );
+      const body = await response.text();
+      const message = googleTokenErrorMessage(response.status, body);
+      console.error(`Token refresh failed for ${this.email}: ${message}`);
+      throw new Error(message);
     }
 
     const data = (await response.json()) as {
@@ -67,6 +90,7 @@ export class GoogleClient {
 
     this.tokens.access_token = data.access_token;
     this.tokens.expiry_date = Date.now() + data.expires_in * 1000;
+    this.tokens.obtained_at = Date.now();
     if (data.refresh_token) {
       this.tokens.refresh_token = data.refresh_token;
     }

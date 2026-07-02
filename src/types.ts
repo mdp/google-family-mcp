@@ -6,6 +6,7 @@ export interface GoogleTokens {
   expires_in: number;
   expiry_date: number; // epoch ms
   token_type: string;
+  obtained_at?: number; // epoch ms
 }
 
 // ─── Google User Info ─────────────────────────────────────────────────────────

@@ -483,6 +483,9 @@ export function registerOAuthRoutes(
       );
     }
     const user = (await userRes.json()) as GoogleUserInfo;
+    console.log(
+      `Google OAuth callback flow=${oauthState.type} email=${user.email} refresh_token=${rawTokens.refresh_token ? "present" : "missing"} expires_in=${rawTokens.expires_in}`,
+    );
 
     // Email whitelist check
     if (!isAllowedEmail(user.email, c.env.ALLOWED_EMAILS)) {
@@ -511,6 +514,7 @@ export function registerOAuthRoutes(
           expires_in: rawTokens.expires_in,
           expiry_date: Date.now() + rawTokens.expires_in * 1000,
           token_type: rawTokens.token_type,
+          obtained_at: Date.now(),
         });
       }
 
@@ -540,6 +544,7 @@ export function registerOAuthRoutes(
         expires_in: rawTokens.expires_in,
         expiry_date: Date.now() + rawTokens.expires_in * 1000,
         token_type: rawTokens.token_type,
+        obtained_at: Date.now(),
       }),
       saveUserInfo(tokensStorage, user.email, user),
     ]);
